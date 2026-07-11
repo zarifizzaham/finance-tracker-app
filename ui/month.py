@@ -54,7 +54,12 @@ def render_month(month_key: str):
     # ── Outflow sub-tab ────────────────────────────────────────────────────────
     with sub1:
         st.subheader("Categorise Outflows")
-        st.caption("Change categories directly in the table, then click **Apply Changes**.")
+        st.caption(
+            "Category column colour key — "
+            ":red[**■ Red**] uncategorized · "
+            ":green[**■ Green**] categorized. "
+            "Edit in the table below, then click **Apply Changes**."
+        )
 
         out_msg_key = f"out_msg_{month_key}"
         if out_msg_key in st.session_state:
@@ -68,45 +73,112 @@ def render_month(month_key: str):
         out_orig_index = list(out.index)
         out_display    = out[["Date", "Description", "Amount", "Category"]].reset_index(drop=True)
 
-        with st.form(key=f"out_form_{month_key}"):
-            edited_outflow = st.data_editor(
-                out_display,
-                column_config={
-                    "Date":     st.column_config.DateColumn("Date", format="DD/MM/YYYY"),
-                    "Amount":   st.column_config.NumberColumn("Amount", format="£%.2f"),
-                    "Category": st.column_config.SelectboxColumn(
-                        "Category",
-                        options=list(st.session_state.categories.keys()),
-                    ),
-                },
-                disabled=["Date", "Description", "Amount"],
-                hide_index=True,
-                use_container_width=True,
-                key=f"outflow_editor_{month_key}",
-            )
-            submitted_out = st.form_submit_button("Apply Changes", type="primary")
+        def _out_status(row):
+            return "🔴" if row["Category"] == "Uncategorized" else "🟢"
+
+        out_with_status = out_display.copy()
+        out_with_status["  "] = out_with_status.apply(_out_status, axis=1)
+
+        edited_outflow = st.data_editor(
+            out_with_status,
+            column_config={
+                "  ":      st.column_config.TextColumn("  ", width="small"),
+                "Date":     st.column_config.DateColumn("Date", format="DD/MM/YYYY"),
+                "Amount":   st.column_config.NumberColumn("Amount", format="£%.2f"),
+                "Category": st.column_config.SelectboxColumn(
+                    "Category",
+                    options=list(st.session_state.categories.keys()),
+                ),
+            },
+            disabled=["  ", "Date", "Description", "Amount"],
+            hide_index=True,
+            use_container_width=True,
+            key=f"outflow_editor_{month_key}",
+        )
+        # Warn if the same description has been assigned two different categories
+        pending = {
+            pos: row["Category"]
+            for pos, row in edited_outflow.iterrows()
+            if row["Category"] != out_display.at[pos, "Category"]
+        }
+        if pending:
+            desc_cats: dict[str, set] = {}
+            for pos, cat in pending.items():
+                desc = edited_outflow.at[pos, "Description"]
+                desc_cats.setdefault(desc, set()).add(cat)
+            conflicts = [d for d, cats in desc_cats.items() if len(cats) > 1]
+            if conflicts:
+                st.warning(
+                    f"**Conflicting assignments:** {', '.join(f'`{d}`' for d in conflicts)} "
+                    "has been given more than one category in this batch. "
+                    "Each row will be saved exactly as set — but only the first assignment "
+                    "propagates to other months."
+                )
+
+        submitted_out = st.button("Apply Changes", type="primary", key=f"out_apply_{month_key}")
 
         if submitted_out:
-            changed = 0
-            for pos, row in edited_outflow.iterrows():
-                real_idx = out_orig_index[pos]
-                if row["Category"] == month["outflow_df"].at[real_idx, "Category"]:
-                    continue
-                month["outflow_df"].at[real_idx, "Category"] = row["Category"]
-                add_keyword_to_category(row["Category"], row["Description"])
-                propagate_category_to_all_months(row["Description"], row["Category"])
-                outflow_overrides[make_tx_key(month["outflow_df"].loc[real_idx])] = row["Category"]
-                changed += 1
-            if changed:
+            # Phase 1: snapshot exactly what the user changed, before any propagation
+            # touches the DataFrame. Comparing against out_display (not the live df)
+            # avoids mid-loop propagation producing false "changes".
+            user_edits = {
+                out_orig_index[pos]: row["Category"]
+                for pos, row in edited_outflow.iterrows()
+                if row["Category"] != out_display.at[pos, "Category"]
+            }
+
+            if user_edits:
+                # Phase 2: write explicit user changes to the DataFrame and overrides
+                for real_idx, new_cat in user_edits.items():
+                    month["outflow_df"].at[real_idx, "Category"] = new_cat
+                    add_keyword_to_category(new_cat, month["outflow_df"].at[real_idx, "Description"])
+                    outflow_overrides[make_tx_key(month["outflow_df"].loc[real_idx])] = new_cat
+
+                # Phase 3: propagate to all months (same-month rows not explicitly
+                # changed by the user are included; explicitly changed rows are left
+                # exactly as the user set them).
+                explicitly_changed = set(user_edits.keys())
+                seen_descs = set()
+                for real_idx, new_cat in user_edits.items():
+                    desc = month["outflow_df"].at[real_idx, "Description"]
+                    if desc in seen_descs:
+                        continue
+                    seen_descs.add(desc)
+                    desc_lower = desc.lower().strip()
+
+                    # Same month: propagate to rows with same description that
+                    # the user did not explicitly reassign in this batch.
+                    df_cur = month["outflow_df"]
+                    cur_mask = (
+                        df_cur["Description"].str.lower().str.strip() == desc_lower
+                    ) & (~df_cur.index.isin(explicitly_changed))
+                    df_cur.loc[cur_mask, "Category"] = new_cat
+                    for _, r in df_cur[cur_mask].iterrows():
+                        outflow_overrides[make_tx_key(r)] = new_cat
+
+                    # Other months: propagate to all matching rows.
+                    for mk, month_data in st.session_state.months.items():
+                        if mk == month_key:
+                            continue
+                        df = month_data["outflow_df"]
+                        mask = df["Description"].str.lower().str.strip() == desc_lower
+                        df.loc[mask, "Category"] = new_cat
+                        for _, r in df[mask].iterrows():
+                            outflow_overrides[make_tx_key(r)] = new_cat
+
                 save_outflow_overrides()
-            st.session_state[out_msg_key] = changed
+
+            st.session_state[out_msg_key] = len(user_edits)
+            st.session_state.pop(f"outflow_editor_{month_key}", None)
             st.rerun()
 
     # ── Inflow sub-tab ─────────────────────────────────────────────────────────
     with sub2:
         st.subheader("Categorise Inflows")
         st.caption(
-            "Change categories directly in the table, then click **Apply Changes**. "
+            "Category column colour key — "
+            ":red[**■ Red**] uncategorized · "
+            ":green[**■ Green**] categorized. "
             "Each inflow is saved individually so the same description on a different date isn't affected."
         )
 
@@ -122,23 +194,29 @@ def render_month(month_key: str):
         inf_orig_index = list(inf.index)
         inf_display    = inf[["Date", "Description", "Amount", "Category"]].reset_index(drop=True)
 
-        with st.form(key=f"inf_form_{month_key}"):
-            edited_inflow = st.data_editor(
-                inf_display,
-                column_config={
-                    "Date":     st.column_config.DateColumn("Date", format="DD/MM/YYYY"),
-                    "Amount":   st.column_config.NumberColumn("Amount", format="£%.2f"),
-                    "Category": st.column_config.SelectboxColumn(
-                        "Category",
-                        options=list(st.session_state.categories.keys()),
-                    ),
-                },
-                disabled=["Date", "Description", "Amount"],
-                hide_index=True,
-                use_container_width=True,
-                key=f"inflow_editor_{month_key}",
-            )
-            submitted_inf = st.form_submit_button("Apply Changes", type="primary")
+        def _inf_status(row):
+            return "🔴" if row["Category"] == "Uncategorized" else "🟢"
+
+        inf_with_status = inf_display.copy()
+        inf_with_status["  "] = inf_with_status.apply(_inf_status, axis=1)
+
+        edited_inflow = st.data_editor(
+            inf_with_status,
+            column_config={
+                "  ":      st.column_config.TextColumn("  ", width="small"),
+                "Date":     st.column_config.DateColumn("Date", format="DD/MM/YYYY"),
+                "Amount":   st.column_config.NumberColumn("Amount", format="£%.2f"),
+                "Category": st.column_config.SelectboxColumn(
+                    "Category",
+                    options=list(st.session_state.categories.keys()),
+                ),
+            },
+            disabled=["  ", "Date", "Description", "Amount"],
+            hide_index=True,
+            use_container_width=True,
+            key=f"inflow_editor_{month_key}",
+        )
+        submitted_inf = st.button("Apply Changes", type="primary", key=f"inf_apply_{month_key}")
 
         if submitted_inf:
             changed = 0
@@ -151,6 +229,7 @@ def render_month(month_key: str):
                 changed += 1
             save_inflow_overrides()
             st.session_state[inf_msg_key] = changed
+            st.session_state.pop(f"inflow_editor_{month_key}", None)
             st.rerun()
 
     # ── Expense summary & charts ───────────────────────────────────────────────

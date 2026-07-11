@@ -82,6 +82,12 @@ def main():
     st.title("Simple Finance Dashboard")
     st.divider()
 
+    st.info(
+        "**Before uploading:** each CSV file must contain transactions from a **single calendar month** only. "
+        "If a file spans multiple months, the app will group all transactions under whichever month appears most "
+        "frequently and the date ranges will be wrong. Export a separate file per month from your banking app before uploading."
+    )
+
     uploaded_files = st.file_uploader(
         "Upload your bank statement CSV files — one file per month, multiple files supported",
         type=["csv"],
@@ -97,13 +103,13 @@ def main():
 
     current_names = {f.name for f in uploaded_files}
 
-    # Remove months whose source file was deselected
+    # Remove months where any source file was deselected; remaining files re-merge below
     for mk in list(st.session_state.months.keys()):
-        if st.session_state.months[mk]["filename"] not in current_names:
+        if not st.session_state.months[mk]["filenames"].issubset(current_names):
             del st.session_state.months[mk]
 
     bank_mappings   = load_bank_mappings()
-    processed_names = {v["filename"] for v in st.session_state.months.values()}
+    processed_names = {name for v in st.session_state.months.values() for name in v["filenames"]}
 
     # Process any newly added files
     for uploaded_file in uploaded_files:
@@ -137,23 +143,28 @@ def main():
                 st.warning(f"**{uploaded_file.name}** has no valid transactions after parsing — skipping.")
                 continue
             month_key, month_label = get_month_info(df)
-            if month_key in st.session_state.months and st.session_state.months[month_key]["filename"] != uploaded_file.name:
-                st.warning(
-                    f"**{uploaded_file.name}** covers {month_label}, which is already loaded from "
-                    f"**{st.session_state.months[month_key]['filename']}**. "
-                    "Remove the existing file first if you want to replace it."
-                )
-                continue
-            st.session_state.months[month_key] = {
-                "bank":        bank_name,
-                "month_label": month_label,
-                "filename":    uploaded_file.name,
-                "outflow_df":  apply_outflow_overrides(df[df["Amount"] < 0].copy()),
-                "inflow_df":   apply_inflow_overrides(df[df["Amount"] > 0].copy()),
-            }
+            new_out = apply_outflow_overrides(df[df["Amount"] < 0].copy())
+            new_inf = apply_inflow_overrides(df[df["Amount"] > 0].copy())
+            def _sort_by_date(df):
+                return df.sort_values(["Date", "Description"], ascending=True).reset_index(drop=True)
+
+            if month_key in st.session_state.months:
+                existing = st.session_state.months[month_key]
+                existing["outflow_df"] = _sort_by_date(pd.concat([existing["outflow_df"], new_out], ignore_index=True))
+                existing["inflow_df"]  = _sort_by_date(pd.concat([existing["inflow_df"],  new_inf],  ignore_index=True))
+                existing["filenames"].add(uploaded_file.name)
+                existing["banks"].append(bank_name)
+            else:
+                st.session_state.months[month_key] = {
+                    "banks":       [bank_name],
+                    "month_label": month_label,
+                    "filenames":   {uploaded_file.name},
+                    "outflow_df":  _sort_by_date(new_out),
+                    "inflow_df":   _sort_by_date(new_inf),
+                }
 
     # Show mapping UI for any file still unrecognised
-    processed_names = {v["filename"] for v in st.session_state.months.values()}
+    processed_names = {name for v in st.session_state.months.values() for name in v["filenames"]}
     for uploaded_file in uploaded_files:
         if uploaded_file.name in processed_names:
             continue
@@ -175,7 +186,7 @@ def main():
     sorted_months = sorted(st.session_state.months.items())
 
     for _, month in sorted_months:
-        st.success(f"Detected: **{month['bank']}** — {month['month_label']} loaded")
+        st.success(f"Detected: **{', '.join(month['banks'])}** — {month['month_label']} loaded")
 
     all_tabs = st.tabs(
         [m["month_label"] for _, m in sorted_months] + ["Compare Months", "50/30/20 Rule"]

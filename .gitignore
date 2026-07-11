@@ -21,6 +21,10 @@ bucket_assignments.json
 # Bank statement CSVs — personal financial data
 *.csv
 
+# Notebooks and archive
+notebooks/
+archive/
+
 # Jupyter checkpoints
 .ipynb_checkpoints/
 

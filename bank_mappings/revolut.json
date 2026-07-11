@@ -1,0 +1,8 @@
+{
+  "bank_name": "Revolut",
+  "fingerprint": "Amount,Balance,Completed Date,Currency,Description,Fee,Product,Started Date,State,Type",
+  "date_column": "Started Date",
+  "date_format": "%d/%m/%Y %H:%M",
+  "description_column": "Description",
+  "amount_column": "Amount"
+}

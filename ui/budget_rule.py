@@ -80,6 +80,7 @@ def render_5030_tab():
     salary = st.number_input(
         "Monthly take-home pay (£)", min_value=0, value=1000, step=50,
         help="Enter your monthly salary or allowance after tax and deductions.",
+        key="5030_salary",
     )
 
     target_20pct = int(salary * 0.20)
@@ -133,17 +134,18 @@ def render_5030_tab():
         return
 
     st.caption(
-        "Assign your categories to Needs and Wants below. "
-        "Savings is calculated automatically as whatever is left over from your take-home pay."
+        "Assign your categories to Needs, Wants, and Savings below. "
+        "Any unspent salary beyond those three buckets is also counted as savings."
     )
 
     available_cats = [c for c in st.session_state.categories if c != "Uncategorized"]
 
-    # Needs options exclude anything already in wants; wants options are computed
-    # from the return value of the needs multiselect so they update in the same rerun.
-    needs_options = [c for c in available_cats if c not in st.session_state.get("5030_wants", [])]
+    prev_wants   = st.session_state.get("5030_wants", [])
+    prev_savings = st.session_state.get("5030_savings", [])
 
-    col1, col2 = st.columns(2)
+    needs_options = [c for c in available_cats if c not in prev_wants and c not in prev_savings]
+
+    col1, col2, col3 = st.columns(3)
     with col1:
         st.markdown("**Needs** — essentials")
         needs_cats = st.multiselect(
@@ -151,21 +153,25 @@ def render_5030_tab():
             label_visibility="collapsed",
         )
     with col2:
-        wants_options = [c for c in available_cats if c not in needs_cats]
+        wants_options = [c for c in available_cats if c not in needs_cats and c not in prev_savings]
         st.markdown("**Wants** — lifestyle")
         wants_cats = st.multiselect(
             "wants_select", wants_options, key="5030_wants",
             label_visibility="collapsed",
         )
-
-    unassigned = [c for c in available_cats if c not in needs_cats and c not in wants_cats]
-    if unassigned:
-        st.warning(
-            f"Not yet assigned to Needs or Wants: **{', '.join(unassigned)}**. "
-            "Assign all categories for an accurate breakdown."
+    with col3:
+        savings_options = [c for c in available_cats if c not in needs_cats and c not in wants_cats]
+        st.markdown("**Savings** — pension, ISA, etc.")
+        savings_cats = st.multiselect(
+            "savings_select", savings_options, key="5030_savings",
+            label_visibility="collapsed",
         )
 
-    if not (needs_cats or wants_cats):
+    unassigned = [c for c in available_cats if c not in needs_cats and c not in wants_cats and c not in savings_cats]
+    if unassigned:
+        st.info(f"Not yet assigned: **{', '.join(unassigned)}**")
+
+    if not (needs_cats or wants_cats or savings_cats):
         st.info("Assign at least one category to a bucket above to see your breakdown.")
         return
 
@@ -207,7 +213,8 @@ def render_5030_tab():
             by_cat = month_data["outflow_df"].groupby("Category")["Amount"].sum().abs()
             mn = by_cat[by_cat.index.isin(needs_cats)].sum()
             mw = by_cat[by_cat.index.isin(wants_cats)].sum()
-            ms = max(salary - mn - mw, 0.0)
+            ms_explicit = by_cat[by_cat.index.isin(savings_cats)].sum()
+            ms = ms_explicit + max(salary - mn - mw - ms_explicit, 0.0)
             col.plotly_chart(
                 bucket_bar_fig(mn, mw, ms, month_data["month_label"], show_legend=False),
                 use_container_width=True,
@@ -221,15 +228,17 @@ def render_5030_tab():
     n_months   = len(st.session_state.months)
     avg_by_cat = all_out.groupby("Category")["Amount"].sum().abs() / n_months
 
-    actual_needs   = avg_by_cat[avg_by_cat.index.isin(needs_cats)].sum()
-    actual_wants   = avg_by_cat[avg_by_cat.index.isin(wants_cats)].sum()
-    actual_savings = max(salary - actual_needs - actual_wants, 0.0)
+    actual_needs            = avg_by_cat[avg_by_cat.index.isin(needs_cats)].sum()
+    actual_wants            = avg_by_cat[avg_by_cat.index.isin(wants_cats)].sum()
+    actual_savings_explicit = avg_by_cat[avg_by_cat.index.isin(savings_cats)].sum()
+    actual_savings_leftover = max(salary - actual_needs - actual_wants - actual_savings_explicit, 0.0)
+    actual_savings          = actual_savings_explicit + actual_savings_leftover
 
     left, right = st.columns([1, 2])
     with left:
-        st.metric("Needs",              f"£{actual_needs:,.0f}",   delta_str(actual_needs,   ideal_needs))
-        st.metric("Wants",              f"£{actual_wants:,.0f}",   delta_str(actual_wants,   ideal_wants))
-        st.metric("Savings (leftover)", f"£{actual_savings:,.0f}", delta_str(actual_savings, ideal_savings))
+        st.metric("Needs",   f"£{actual_needs:,.0f}",   delta_str(actual_needs,   ideal_needs))
+        st.metric("Wants",   f"£{actual_wants:,.0f}",   delta_str(actual_wants,   ideal_wants))
+        st.metric("Savings", f"£{actual_savings:,.0f}", delta_str(actual_savings, ideal_savings))
     with right:
         st.plotly_chart(
             bucket_bar_fig(actual_needs, actual_wants, actual_savings,
@@ -244,18 +253,20 @@ def render_5030_tab():
 
     st.caption(
         f"Take-home pay **£{salary:,.0f}** − Needs **£{actual_needs:,.0f}** − Wants **£{actual_wants:,.0f}** "
-        f"= leftover saved **£{actual_savings:,.0f}/month**."
+        f"− Savings contributions **£{actual_savings_explicit:,.0f}** "
+        f"= leftover **£{actual_savings_leftover:,.0f}**. "
+        f"Total saved: **£{actual_savings:,.0f}/month**."
     )
 
     if actual_savings == 0:
         st.warning(
-            "Your Needs and Wants spending matches or exceeds your take-home pay — no surplus to project. "
+            "Your Needs, Wants, and Savings spending matches or exceeds your take-home pay — no surplus to project. "
             "Consider reviewing your Wants categories to find areas to reduce."
         )
         return
 
     st.plotly_chart(
-        projection_chart(actual_savings, f"Growth of £{actual_savings:,.0f}/month (your leftover savings)"),
+        projection_chart(actual_savings, f"Growth of £{actual_savings:,.0f}/month (your total savings)"),
         use_container_width=True,
     )
     st.dataframe(milestone_table(actual_savings), use_container_width=True)
