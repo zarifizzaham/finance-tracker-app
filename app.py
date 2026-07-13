@@ -63,7 +63,7 @@ def _apply_css():
 def _init_session_state():
     """Initialize session state from disk on each new session (survives F5)."""
     if "categories" not in st.session_state:
-        st.session_state.categories = {"Uncategorized": [], "New category": []}
+        st.session_state.categories = {"Uncategorized": []}
         if os.path.exists("categories.json"):
             try:
                 with open("categories.json", "r") as f:

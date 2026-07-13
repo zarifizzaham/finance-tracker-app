@@ -1,7 +1,8 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from categories import add_keyword_to_category, propagate_category_to_all_months
+from categories import add_keyword_to_category
+from persistence import save_categories
 from persistence import (
     outflow_overrides, inflow_overrides,
     make_tx_key, make_inflow_key,
@@ -131,8 +132,9 @@ def render_month(month_key: str):
                 # Phase 2: write explicit user changes to the DataFrame and overrides
                 for real_idx, new_cat in user_edits.items():
                     month["outflow_df"].at[real_idx, "Category"] = new_cat
-                    add_keyword_to_category(new_cat, month["outflow_df"].at[real_idx, "Description"])
+                    add_keyword_to_category(new_cat, month["outflow_df"].at[real_idx, "Description"], save=False)
                     outflow_overrides[make_tx_key(month["outflow_df"].loc[real_idx])] = new_cat
+                save_categories()  # write once after the full batch
 
                 # Phase 3: propagate to all months (same-month rows not explicitly
                 # changed by the user are included; explicitly changed rows are left
@@ -258,7 +260,7 @@ def render_month(month_key: str):
     st.dataframe(
         category_totals,
         column_config={
-            "Quantity": st.column_config.NumberColumn("Quantity", format="%d"),
+            "Quantity": st.column_config.NumberColumn("Quantity of Outflows", format="%d"),
             "Outflows": st.column_config.NumberColumn("Outflows", format="%.2f"),
             "Inflows":  st.column_config.NumberColumn("Inflows",  format="%.2f"),
             "Expenses": st.column_config.NumberColumn("Expenses", format="%.2f"),

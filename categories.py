@@ -1,5 +1,10 @@
 import streamlit as st
-from persistence import save_categories, outflow_overrides, make_tx_key
+from persistence import (
+    save_categories,
+    outflow_overrides, inflow_overrides,
+    make_tx_key,
+    save_outflow_overrides, save_inflow_overrides,
+)
 
 
 def categorize_transactions(df):
@@ -16,24 +21,14 @@ def categorize_transactions(df):
     return df
 
 
-def add_keyword_to_category(category: str, keyword: str) -> bool:
+def add_keyword_to_category(category: str, keyword: str, save: bool = True) -> bool:
     keyword = keyword.strip()
     if keyword and keyword not in st.session_state.categories[category]:
         st.session_state.categories[category].append(keyword)
-        save_categories()
+        if save:
+            save_categories()
         return True
     return False
-
-
-def propagate_category_to_all_months(description: str, category: str):
-    """Update every loaded month's outflow_df and write an override key per matching row."""
-    desc_lower = description.lower().strip()
-    for month_data in st.session_state.months.values():
-        df = month_data["outflow_df"]
-        mask = df["Description"].str.lower().str.strip() == desc_lower
-        df.loc[mask, "Category"] = category
-        for _, row in df[mask].iterrows():
-            outflow_overrides[make_tx_key(row)] = category
 
 
 def delete_category(cat_name: str):
@@ -43,3 +38,16 @@ def delete_category(cat_name: str):
         for df_key in ["outflow_df", "inflow_df"]:
             df = month[df_key]
             df.loc[df["Category"] == cat_name, "Category"] = "Uncategorized"
+
+    # Remove stale override entries so the deleted category isn't re-applied on next upload
+    stale_out = [k for k, v in outflow_overrides.items() if v == cat_name]
+    for k in stale_out:
+        del outflow_overrides[k]
+    if stale_out:
+        save_outflow_overrides()
+
+    stale_inf = [k for k, v in inflow_overrides.items() if v == cat_name]
+    for k in stale_inf:
+        del inflow_overrides[k]
+    if stale_inf:
+        save_inflow_overrides()
