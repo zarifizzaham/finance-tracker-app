@@ -61,6 +61,7 @@ def render_month(month_key: str):
             ":green[**■ Green**] categorized. "
             "Edit in the table below, then click **Apply Changes**."
         )
+        st.caption("**⚠️ Adding a new category from the sidebar? Press Apply Changes first — any unsaved categorisations will be lost.**")
 
         out_msg_key = f"out_msg_{month_key}"
         if out_msg_key in st.session_state:
@@ -116,7 +117,9 @@ def render_month(month_key: str):
                     "propagates to other months."
                 )
 
-        submitted_out = st.button("Apply Changes", type="primary", key=f"out_apply_{month_key}")
+        col_out_apply, col_out_reset = st.columns([1, 1])
+        submitted_out  = col_out_apply.button("Apply Changes",    type="primary",    key=f"out_apply_{month_key}")
+        reset_out      = col_out_reset.button("Uncategorise All", type="secondary",  key=f"out_reset_{month_key}")
 
         if submitted_out:
             # Phase 1: snapshot exactly what the user changed, before any propagation
@@ -174,6 +177,14 @@ def render_month(month_key: str):
             st.session_state.pop(f"outflow_editor_{month_key}", None)
             st.rerun()
 
+        if reset_out:
+            for _, row in month["outflow_df"].iterrows():
+                outflow_overrides.pop(make_tx_key(row), None)
+            month["outflow_df"]["Category"] = "Uncategorized"
+            save_outflow_overrides()
+            st.session_state.pop(f"outflow_editor_{month_key}", None)
+            st.rerun()
+
     # ── Inflow sub-tab ─────────────────────────────────────────────────────────
     with sub2:
         st.subheader("Categorise Inflows")
@@ -183,6 +194,7 @@ def render_month(month_key: str):
             ":green[**■ Green**] categorized. "
             "Each inflow is saved individually so the same description on a different date isn't affected."
         )
+        st.caption("**⚠️ Adding a new category from the sidebar? Press Apply Changes first — any unsaved categorisations will be lost.**")
 
         inf_msg_key = f"inf_msg_{month_key}"
         if inf_msg_key in st.session_state:
@@ -218,7 +230,9 @@ def render_month(month_key: str):
             use_container_width=True,
             key=f"inflow_editor_{month_key}",
         )
-        submitted_inf = st.button("Apply Changes", type="primary", key=f"inf_apply_{month_key}")
+        col_inf_apply, col_inf_reset = st.columns([1, 1])
+        submitted_inf  = col_inf_apply.button("Apply Changes",    type="primary",   key=f"inf_apply_{month_key}")
+        reset_inf      = col_inf_reset.button("Uncategorise All", type="secondary", key=f"inf_reset_{month_key}")
 
         if submitted_inf:
             changed = 0
@@ -231,6 +245,14 @@ def render_month(month_key: str):
                 changed += 1
             save_inflow_overrides()
             st.session_state[inf_msg_key] = changed
+            st.session_state.pop(f"inflow_editor_{month_key}", None)
+            st.rerun()
+
+        if reset_inf:
+            for _, row in month["inflow_df"].iterrows():
+                inflow_overrides.pop(make_inflow_key(row), None)
+            month["inflow_df"]["Category"] = "Uncategorized"
+            save_inflow_overrides()
             st.session_state.pop(f"inflow_editor_{month_key}", None)
             st.rerun()
 
