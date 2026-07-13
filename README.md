@@ -26,6 +26,7 @@ A personal finance tracking app built with Streamlit. Upload your bank statement
 | Barclays | `Memo`, `Subcategory` columns |
 | HSBC | `Paid out`, `Paid in` columns |
 | Starling | `Counter Party`, `Reference` columns |
+| Lloyds | `Sort Code`, `Transaction Date` columns |
 | **Any other bank** | Map columns manually on first upload — saved for next time |
 
 ---

@@ -25,7 +25,7 @@ def show_welcome_guide():
     st.divider()
 
     st.markdown("**Supported banks (auto-detected)**")
-    st.caption("Revolut · Monzo · Barclays · HSBC · Starling — if your bank isn't listed, you'll be prompted to map the columns once and it will be remembered.")
+    st.caption("Revolut · Monzo · Barclays · HSBC · Starling · Lloyds — if your bank isn't listed, you'll be prompted to map the columns once and it will be remembered.")
 
     st.info(
         "**Tip:** The app learns from your choices. Once you label 'Netflix' as Subscriptions, "

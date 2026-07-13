@@ -30,6 +30,13 @@ BANK_FORMATS = {
         "debit_col":       "Paid out",
         "credit_col":      "Paid in",
     },
+    "Lloyds": {
+        "date_col":        "Transaction Date",
+        "date_format":     "%d/%m/%Y",
+        "description_col": "Transaction Description",
+        "debit_col":       "Debit Amount",
+        "credit_col":      "Credit Amount",
+    },
 }
 
 DATE_FORMAT_OPTIONS = {

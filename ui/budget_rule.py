@@ -138,7 +138,7 @@ def render_5030_tab():
         "Any unspent salary beyond those three buckets is also counted as savings."
     )
 
-    available_cats = [c for c in st.session_state.categories if c != "Uncategorized"]
+    available_cats = sorted(c for c in st.session_state.categories if c != "Uncategorized")
 
     prev_wants   = st.session_state.get("5030_wants", [])
     prev_savings = st.session_state.get("5030_savings", [])

@@ -20,6 +20,8 @@ def detect_bank(columns) -> str | None:
         return "HSBC"
     if "Counter Party" in col_set and "Reference" in col_set:
         return "Starling"
+    if "Sort Code" in col_set and "Transaction Date" in col_set:
+        return "Lloyds"
     return None
 
 

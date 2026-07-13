@@ -62,18 +62,38 @@ def render_comparison():
             cat_rows.append({"Month": month["month_label"], "Category": cat, "Amount": round(amt, 2)})
     cat_df = pd.DataFrame(cat_rows)
 
-    fig2 = px.bar(
-        cat_df,
-        x="Month", y="Amount", color="Category", barmode="stack",
-        title="Spending by Category per Month",
-        template="plotly_dark",
-    )
-    fig2.update_layout(
-        yaxis_title="Amount (£)",
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-    )
-    st.plotly_chart(fig2, use_container_width=True)
+    st.markdown("**Spending by Category per Month**")
+
+    # Assign colours by category insertion order (stable — new categories append at end)
+    all_cats  = list(st.session_state.categories.keys())
+    color_seq = px.colors.qualitative.Plotly
+    color_map = {cat: color_seq[i % len(color_seq)] for i, cat in enumerate(all_cats)}
+
+    COLS_PER_ROW = 3
+    for i in range(0, len(sorted_months), COLS_PER_ROW):
+        batch = sorted_months[i : i + COLS_PER_ROW]
+        cols  = st.columns(len(batch))
+        for col, (_, month) in zip(cols, batch):
+            pie_data = month["outflow_df"].groupby("Category")["Amount"].sum().abs().reset_index()
+            pie_data.columns = ["Category", "Amount"]
+            fig_pie = px.pie(
+                pie_data,
+                values="Amount",
+                names="Category",
+                title=month["month_label"],
+                hole=0.35,
+                template="plotly_dark",
+                color="Category",
+                color_discrete_map=color_map,
+            )
+            fig_pie.update_traces(textinfo="none")
+            fig_pie.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                showlegend=True,
+                legend=dict(orientation="v", x=1.02, y=0.5),
+            )
+            col.plotly_chart(fig_pie, use_container_width=True)
 
     col1, col2 = st.columns(2)
 

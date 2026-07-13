@@ -88,7 +88,7 @@ def render_month(month_key: str):
                 "Amount":   st.column_config.NumberColumn("Amount", format="£%.2f"),
                 "Category": st.column_config.SelectboxColumn(
                     "Category",
-                    options=list(st.session_state.categories.keys()),
+                    options=sorted(st.session_state.categories.keys()),
                 ),
             },
             disabled=["  ", "Date", "Description", "Amount"],
@@ -210,7 +210,7 @@ def render_month(month_key: str):
                 "Amount":   st.column_config.NumberColumn("Amount", format="£%.2f"),
                 "Category": st.column_config.SelectboxColumn(
                     "Category",
-                    options=list(st.session_state.categories.keys()),
+                    options=sorted(st.session_state.categories.keys()),
                 ),
             },
             disabled=["  ", "Date", "Description", "Amount"],

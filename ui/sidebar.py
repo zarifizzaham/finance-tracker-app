@@ -44,6 +44,7 @@ def render_sidebar():
             if cat != "Uncategorized":
                 if col2.button("✕", key=f"del_cat_{cat}", help=f"Delete {cat}"):
                     delete_category(cat)
+                    st.rerun()
 
         # ── Download Report ────────────────────────────────────────────────────
         st.divider()
