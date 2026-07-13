@@ -6,11 +6,12 @@ A personal finance tracking app built with Streamlit. Upload your bank statement
 
 ## Features
 
-- **Multi-month upload** — drop in one CSV per month; the app detects the dominant month automatically
-- **Auto-categorisation** — transactions are matched against keyword rules you define; one override teaches the app and applies it across all loaded months
-- **Manual override** — edit any category directly in the table; changes persist across sessions
+- **Multi-month, multi-bank upload** — drop in one or more CSVs per month; multiple banks for the same month are merged automatically
+- **Auto-categorisation** — transactions are matched against keyword rules you define; one override teaches the app and applies it to matching descriptions in the same month and all other loaded months
+- **Manual override** — edit any category directly in the table with a colour-coded status indicator (🔴 uncategorised, 🟢 categorised); changes persist across sessions
 - **Compare Months** — side-by-side bar charts, stacked category breakdown, top-6 trend lines, and month-over-month % change
-- **50/30/20 Rule** — budget calculator, savings projections (cash / easy-access / index fund scenarios), and actual vs target breakdown using your real spending data
+- **50/30/20 Rule** — budget calculator, savings projections (cash / easy-access / index fund scenarios), and actual vs target breakdown across three buckets: Needs, Wants, and Savings
+- **PDF report export** — generates a multi-page PDF with a full transaction log, per-month expense charts, month comparison, and a 40-year savings projection
 - **Custom bank support** — map any unrecognised CSV format once; saved and reused automatically
 - **Frosted glass UI** — dark-themed with a background image; charts use transparent backgrounds
 
@@ -81,22 +82,29 @@ Then restart with the command above and open a fresh browser tab.
 ### Categorising transactions
 
 - Transactions are auto-assigned based on saved keyword rules.
+- Each row shows a status indicator: 🔴 uncategorised, 🟢 categorised.
 - To change a category: find the row in the **Cash Outflow** or **Cash Inflow** table, select a new category from the dropdown, then click **Apply Changes**.
-- Applying a change saves a keyword rule so every future transaction with the same description gets the same category automatically — including across all months already loaded.
+- Applying a change saves a keyword rule and propagates it to every other row with the same description — in the same month and across all other loaded months.
 
 ### Managing categories
 
 Open the sidebar (arrow on the left) to:
 - Add a new category
-- Add or remove keywords from an existing category
-- Delete a category (transactions revert to Uncategorised)
+- Delete a category (transactions revert to Uncategorised and all saved overrides for that category are removed)
 
 ### 50/30/20 Rule tab
 
 1. Enter your monthly take-home pay (after tax).
 2. Adjust the savings slider to explore different saving rates.
-3. Scroll to **Your Spending vs 50/30/20** and assign each of your categories to either **Needs** or **Wants**.
-4. The app calculates how your actual spending compares to the 50/30/20 targets and projects the leftover savings over 40 years.
+3. Scroll to **Your Spending vs 50/30/20** and assign each of your categories to **Needs**, **Wants**, or **Savings** (e.g. pension, ISA).
+4. The app calculates how your actual spending compares to the 50/30/20 targets and projects your total savings rate over 40 years.
+
+### Downloading a PDF report
+
+1. Open the sidebar and expand **Before you download — checklist**.
+2. Complete all four steps: upload CSVs, categorise all transactions, enter your take-home pay, and assign Needs/Wants in the 50/30/20 tab.
+3. Click **Generate Report** — the PDF renders in the background.
+4. Click **Download Report PDF** to save it.
 
 ---
 
