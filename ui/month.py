@@ -2,8 +2,8 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from categories import add_keyword_to_category
-from persistence import save_categories
 from persistence import (
+    save_categories,
     outflow_overrides, inflow_overrides,
     make_tx_key, make_inflow_key,
     save_outflow_overrides, save_inflow_overrides,
@@ -261,6 +261,104 @@ def render_month(month_key: str):
     out = _filter(month["outflow_df"])
     inf = _filter(month["inflow_df"])
 
+    # ── Weekly breakdown ───────────────────────────────────────────────────────
+    st.subheader("Weekly Expense Breakdown")
+
+    if not out.empty:
+        out_weekly = out.copy()
+        month_start = pd.to_datetime(month_key)
+        out_weekly["Week"] = pd.to_datetime(out_weekly["Date"]).apply(
+            lambda d: f"Week {max(0, (d - month_start).days) // 7 + 1}"
+        )
+        weeks_present = sorted(out_weekly["Week"].unique(),
+                               key=lambda w: int(w.split()[1]))
+
+        weekly_pivot = (
+            out_weekly.groupby(["Category", "Week"])["Amount"]
+            .sum().abs()
+            .unstack(fill_value=0)
+            .reindex(columns=weeks_present, fill_value=0)
+        )
+        weekly_pivot["Total"] = weekly_pivot.sum(axis=1)
+        weekly_pivot = weekly_pivot.sort_values("Total", ascending=False).reset_index()
+
+        # ── Charts ────────────────────────────────────────────────────────────
+        # Grouped bar chart — top 6 categories across weeks
+        top_cats = weekly_pivot.nlargest(6, "Total")["Category"].tolist()
+        bar_rows = [
+            {"Category": row["Category"], "Week": week, "Amount (£)": row[week]}
+            for _, row in weekly_pivot[weekly_pivot["Category"].isin(top_cats)].iterrows()
+            for week in weeks_present
+        ]
+        fig_line = px.bar(
+            pd.DataFrame(bar_rows),
+            x="Week", y="Amount (£)", color="Category",
+            barmode="group",
+            title="Weekly Spend by Category (Top 6)",
+            template="plotly_dark",
+        )
+        fig_line.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        )
+        st.plotly_chart(fig_line, use_container_width=True)
+
+        # Bar chart — total outflow per week
+        week_totals = pd.DataFrame({
+            "Week":       weeks_present,
+            "Amount (£)": [weekly_pivot[w].sum() for w in weeks_present],
+        })
+        fig_bar = px.bar(
+            week_totals, x="Week", y="Amount (£)",
+            title="Total Spending per Week",
+            text=week_totals["Amount (£)"].apply(lambda x: f"£{x:,.2f}"),
+            template="plotly_dark",
+        )
+        fig_bar.update_traces(textposition="outside")
+        fig_bar.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+        st.plotly_chart(fig_bar, use_container_width=True)
+
+        # ── Table with £ change and % change ──────────────────────────────────
+        # Table 1: spending per week
+        spend_table = weekly_pivot[["Category"] + weeks_present + ["Total"]].copy()
+        st.dataframe(
+            spend_table,
+            column_config={
+                **{w: st.column_config.NumberColumn(w, format="£%.2f") for w in weeks_present},
+                "Total": st.column_config.NumberColumn("Total", format="£%.2f"),
+            },
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        # Table 2: week-over-week changes
+        if len(weeks_present) > 1:
+            st.markdown("**Week-over-Week Changes**")
+
+            def _fmt_delta(delta, base):
+                pct  = f"{delta / base * 100:+.1f}%" if base != 0 else "—"
+                sign = "+" if delta >= 0 else ""
+                return f"£{sign}{delta:.2f} ({pct})"
+
+            delta_table = weekly_pivot[["Category"]].copy()
+            for i in range(len(weeks_present) - 1):
+                w_curr, w_next = weeks_present[i], weeks_present[i + 1]
+                col_label = f"{w_curr} → {w_next}"
+                delta_table[col_label] = [
+                    _fmt_delta(
+                        weekly_pivot.at[j, w_next] - weekly_pivot.at[j, w_curr],
+                        weekly_pivot.at[j, w_curr],
+                    )
+                    for j in weekly_pivot.index
+                ]
+
+            st.dataframe(delta_table, use_container_width=True, hide_index=True)
+    else:
+        st.info("No outflow transactions in the selected date range.")
+
+    st.divider()
+
+    # ── Monthly expense summary ────────────────────────────────────────────────
     st.subheader("Expense Summary")
 
     outflow_totals = out.groupby("Category")["Amount"].sum().abs().reset_index()
@@ -383,3 +481,23 @@ def render_month(month_key: str):
     )
     st.plotly_chart(fig2, use_container_width=True)
     st.caption("Side-by-side comparison of total money out (Outflows), money in (Inflows), and the net difference per category. A negative Net Total means more came in than went out — common for Transfers. The TOTAL column summarises the entire month.")
+
+    st.divider()
+
+    # ── Top 10 individual spends ───────────────────────────────────────────────
+    st.subheader("Top 10 Spends")
+    top10 = (
+        out[["Description", "Amount", "Date", "Category"]]
+        .copy()
+        .assign(Amount=out["Amount"].abs())
+        .sort_values("Amount", ascending=False)
+        .head(10)
+        .reset_index(drop=True)
+    )
+    top10.index += 1
+    for _, row in top10.iterrows():
+        st.markdown(
+            f"**{row['Description']}** &nbsp;&mdash;&nbsp; £{row['Amount']:,.2f}"
+            f" &nbsp;·&nbsp; <span style='color:gray'>{row['Category']} &nbsp;·&nbsp; {row['Date']}</span>",
+            unsafe_allow_html=True,
+        )
